@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Launch EC2 Instance with Multiple ENIs
+
+Resources:
+
+  rEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3a.medium
+      ImageId: <FRR Router AMI ID>
+      NetworkInterfaces:
+        - NetworkInterfaceId: <Untrust ENI ID>
+          DeviceIndex: 0
+        - NetworkInterfaceId: <Network ENI ID>
+          DeviceIndex: 1
+        - NetworkInterfaceId: <Trust ENI ID>
+          DeviceIndex: 2
+      Tags:
+        - Key: Name
+          Value: sg-frr-router
+
+Outputs:
+  InstanceId:
+    Description: The ID of the launched EC2 instance.
+    Value: !Ref rEC2Instance
