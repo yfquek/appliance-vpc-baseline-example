@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a Virtual Private Cloud (VPC) with 3 Subnets, Internet Gateway, Security Groups, and Route Tables, Elastic IP, 3x Elastic Network Interface, EC2 Instance Connect Endpoint
+
+Resources:
+  rVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.11.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: cloudwan-sg-vpc
+  
+  #Subnets
+  rUntrustSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref rVPC
+      CidrBlock: "10.11.1.0/24"
+      AvailabilityZone: "ap-southeast-1a"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: rUntrustSubnet
+
+  rTrustSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref rVPC
+      CidrBlock: "10.11.3.0/24"
+      AvailabilityZone: "ap-southeast-1a"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: rTrustSubnet
+
+  rNetworkSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref rVPC
+      CidrBlock: "10.11.2.0/24"
+      AvailabilityZone: "ap-southeast-1a"
+      Tags:
+        - Key: Name
+          Value: rNetworkSubnet
+
+  #Internet Gateway
+  rInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: SGInternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref rVPC
+      InternetGatewayId: !Ref rInternetGateway
+
+  # Route Tables
+  rUntrustRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref rVPC
+      Tags:
+        - Key: Name
+          Value: rUntrustRouteTable
+
+  rTrustRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref rVPC
+      Tags:
+        - Key: Name
+          Value: rTrustRouteTable
+
+  rNetworkRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref rVPC
+      Tags:
+        - Key: Name
+          Value: rNetworkRouteTable
+
+  # Route Table Associations
+  rUntrustSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref rUntrustSubnet
+      RouteTableId: !Ref rUntrustRouteTable
+
+  rTrustSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref rTrustSubnet
+      RouteTableId: !Ref rTrustRouteTable
+
+  rNetworkSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref rNetworkSubnet
+      RouteTableId: !Ref rNetworkRouteTable
+
+  # Route Definitions
+  rUntrustRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref rUntrustRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref rInternetGateway
+
+  # Security Groups
+  rSecurityGroupUntrust:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "rSecurityGroupUntrust"
+      GroupDescription: "Security Group for Untrust Subnet"
+      VpcId: !Ref rVPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: -1  # Allow all traffic
+
+  rSecurityGroupTrust:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "rSecurityGroupTrust"
+      GroupDescription: "Security Group for Trust Subnet"
+      VpcId: !Ref rVPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: -1  # Allow all traffic
+
+  rSecurityGroupNetwork:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "rSecurityGroupNetwork"
+      GroupDescription: "Security Group for Network Subnet"
+      VpcId: !Ref rVPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: -1  # Allow all traffic
+
+  rSecurityGroupEIC:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "rSecurityGroupEIC"
+      GroupDescription: "Security Group for EIC endpoint"
+      VpcId: !Ref rVPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: -1  # Allow all traffic
+
+  # ENIs
+  rTrustENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref rTrustSubnet
+      GroupSet:
+        - !Ref rSecurityGroupTrust
+      PrivateIpAddress: 10.11.3.254
+      Description: "Trust Interface"
+      Tags:
+        - Key: Name
+          Value: trust-eni
+
+  rUntrustENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref rUntrustSubnet
+      GroupSet:
+        - !Ref rSecurityGroupUntrust
+      PrivateIpAddress: 10.11.1.254
+      Description: "Untrust Interface"
+      Tags:
+        - Key: Name
+          Value: untrust-eni
+
+  rNetworkENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref rNetworkSubnet
+      GroupSet:
+        - !Ref rSecurityGroupNetwork
+      PrivateIpAddress: 10.11.2.254
+      Description: "Networkleg Interface"
+      Tags:
+        - Key: Name
+          Value: networkleg-eni
+
+  # EIP for rUntrustENI
+  rUntrustEIP:
+    Type: AWS::EC2::EIP
+
+  rUntrustEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt rUntrustEIP.AllocationId
+      NetworkInterfaceId: !Ref rUntrustENI
+
+  # EC2 Instance Connect Endpoint
+  rEIC:
+    Type: AWS::EC2::InstanceConnectEndpoint
+    Properties:
+      SecurityGroupIds:
+        - !Ref rSecurityGroupEIC
+      SubnetId: !Ref rTrustSubnet
+
+# Outputs
+Outputs:
+  VpcId:
+    Description: The ID of the created VPC
+    Value: !Ref rVPC
+
+  rUntrustSubnetId:
+    Description: The ID of the Untrust Subnet
+    Value: !Ref rUntrustSubnet
+
+  rTrustSubnetId:
+    Description: The ID of the Trust Subnet
+    Value: !Ref rTrustSubnet
+
+  rNetworkSubnetId:
+    Description: The ID of the Network Subnet
+    Value: !Ref rNetworkSubnet
+
+  InternetGatewayId:
+    Description: The ID of the created Internet Gateway
+    Value: !Ref rInternetGateway
+
+  rUntrustRouteTableId:
+    Description: The ID of the Untrust Route Table
+    Value: !Ref rUntrustRouteTable
+
+  rTrustRouteTableId:
+    Description: The ID of the Trust Route Table
+    Value: !Ref rTrustRouteTable
+
+  rNetworkRouteTableId:
+    Description: The ID of the Network Route Table
+    Value: !Ref rNetworkRouteTable
+
+  rSecurityGroupUntrustId:
+    Description: The ID of the Security Group for Untrust Subnet
+    Value: !Ref rSecurityGroupUntrust
+
+  rSecurityGroupTrustId:
+    Description: The ID of the Security Group for Trust Subnet
+    Value: !Ref rSecurityGroupTrust
+
+  rSecurityGroupNetworkId:
+    Description: The ID of the Security Group for Network Subnet
+    Value: !Ref rSecurityGroupNetwork
+
+  rUntrustEIPId:
+    Description: The Allocation ID of the Untrust Elastic IP
+    Value: !GetAtt rUntrustEIP.AllocationId
+
+  rTrustENIId:
+    Description: The ID of the Trusted Elastic Network Interface
+    Value: !Ref rTrustENI
+
+  rUntrustENIId:
+    Description: The ID of the Untrust Elastic Network Interface
+    Value: !Ref rUntrustENI
+
+  rNetworkENIId:
+    Description: The ID of the Network Elastic Network Interface
+    Value: !Ref rNetworkENI
+
+  rEICId:
+    Description: The ID of the EC2 Instance Connect Endpoint
+    Value: !Ref rEIC
