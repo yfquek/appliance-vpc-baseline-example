@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudWAN Test
+
+Resources:
+  rGlobalNetwork:
+    Type: AWS::NetworkManager::GlobalNetwork
+    Properties:
+      Description: Global Network
+      Tags:
+        - Key: Env
+          Value: Test
+        - Key: Name
+          Value: Global Network
+
+  rCoreNetwork:
+    Type: AWS::NetworkManager::CoreNetwork
+    Properties:
+      Description: Core Network
+      GlobalNetworkId: !Ref rGlobalNetwork
+      PolicyDocument:
+        version: '2021.12'
+        core-network-configuration:
+          vpn-ecmp-support: true
+          inside-cidr-blocks:
+            - 172.17.1.0/24
+            - 172.17.2.0/24
+          asn-ranges:
+            - 64521-64529
+          edge-locations:
+            - location: ap-southeast-1
+              asn: 64521
+              inside-cidr-blocks:
+                - 172.17.1.0/24
+            - location: us-east-1
+              asn: 64522
+              inside-cidr-blocks:
+                - 172.17.2.0/24
+        segments:
+          - name: GlobalTransit
+            edge-locations:
+              - ap-southeast-1
+              - us-east-1
+            require-attachment-acceptance: false
+        attachment-policies:
+          - rule-number: 100
+            condition-logic: and
+            conditions:
+              - type: tag-value
+                operator: equals
+                key: Segment
+                value: GlobalTransit
+            action:
+              association-method: constant
+              segment: GlobalTransit
+
+Outputs:
+  CoreNetworkId:
+    Value: !GetAtt rCoreNetwork.CoreNetworkId
+    Description: Core Network Id
+  CoreNetworkArn:
+    Value: !GetAtt rCoreNetwork.CoreNetworkArn
+    Description: Core Network ARN
